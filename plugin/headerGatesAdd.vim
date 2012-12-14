@@ -1,12 +1,16 @@
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 " File Name:      headerGatesAdd.vim
-" Abstract:       A (G)VIM plugin which automatic inser C/C++ header gates .
+" Abstract:       A (G)VIM plugin which automatic insert C/C++ header gates .
 " Author:         帅得不敢出门  email:tczengming@163.com
-" Version:        1.3
-" Last Change:    2012.2.1
+" Version:        1.4
+" Last Change:    2012.12.10
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Usage {{{
+"   When create a new c/c++ header this plugin will automatic insert c/c++ header gates.
+"       we also could manual insert gates by inputing command :HeaderGatesAdd
+" }}}
 
 " Example {{{
 " ----------------------------------------
@@ -58,14 +62,6 @@ let loaded_cinsert_header_gates= 1
 
 " }}}
 
-" Check Python {{{
-
-if !has('python')"
-    finish
-endif
-
-"}}}
-
 if !exists('g:HeaderGatesAdd_extern_c')
     let g:HeaderGatesAdd_extern_c=0
 endif
@@ -84,107 +80,130 @@ endif
 
 " insertHeaderGates {{{
 
-function! s:insertHeaderGates()
-python << EOF
-import vim
-import re
-#locate next line of Author License ...
-def getInsertLine():
-    b=vim.current.buffer
-    n = len(b)
-    i=0
-    while (i<n and 0==len(b[i].lstrip())):
-        i+=1
-    while (i<n and b[i].lstrip()[0:2] == '//'):
-        i+=1
-    while (i<n and 0==len(b[i].lstrip())):
-        i+=1
-    if i == n:
-        return i
-
-    line = b[i].lstrip()
-    start = line[0:2]
-    while start == '/*':
-        while (i<n-1 and line[len(line)-2 : len(line)] != '*/'):
-            i+=1
-            line = b[i]
-        while (i<n and 0==len(b[i].lstrip())):
-            i+=1
-        if i<n-1:
-            i+=1
-            line = b[i].lstrip()
-            start = line[0:2]
-        else:
-            if line[len(line)-2 : len(line)] == '*/':
-                i+=1
-            break
-
-    return i
-
-def generateGateName(name):
-    tmp = []
-    type = vim.eval("g:HeaderGatesAdd_gate_type")
-    end = name.rfind('.')
+function! s:getInsertLine()
+    let s:n = line("w0")
+    let s:jyxstr = getline(s:n)
     
-    for i,c in enumerate(name):
-        if i >= end:
+    " skip line that is empty or commented by // 
+    while s:jyxstr =~ '^\s*\/\/' || s:jyxstr =~ '^\s*$'
+        let s:n = s:n + 1
+        if s:n > line("$")
             break
-        if type == '0': #default  aTestFile.h ---> A_TEST_FILE
-            if c.isupper() and i!=0 :
-                tmp.append('_')
-                tmp.append(c.upper())
-            elif c == ' ' or c == '.':
-                tmp.append('_')
-            else:
-                tmp.append(c.upper())
-        elif type == '1': # aTestFile.h  ---->  ATESTFILE
-            if c==' ' or c == '.':
-                continue
-            else:
-                tmp.append(c.upper())
-        elif type == '2': # aTestFile.h  ----> aTestFile
-            tmp.append(c)
+        endif
+        let s:jyxstr = getline(s:n)
+    endwhile
 
-    gatename = vim.eval("g:HeaderGatesAdd_prefix")
-    gatename += "".join(tmp)
-    gatename +=vim.eval("g:HeaderGatesAdd_suffix")
-    return gatename
+    if s:n > line("$")
+        return s:n
+    endif
 
-#insert header gates
-def cplusHeaderGates():
-    vim.command('let title=expand("%:t")')
-    name=vim.eval("title")
-    gatename = generateGateName(name)
-    b = vim.current.buffer
-    n = getInsertLine()
-    if n > 0:
-        b.append("\n", n)
-        n+=1
+    " skip line that is empty or commented by /* */ 
+    while s:jyxstr =~ '^\s*\/\*'
+        let s:n = s:n + 1
+        if s:n > line("$")
+            return s:n
+        endif
+        let s:jyxstr = getline(s:n)
+        while s:jyxstr !~ '\s*\*\/\s*$'
+            let s:n = s:n + 1
+            if s:n > line("$")
+                return s:n
+            endif
+            let s:jyxstr = getline(s:n)
+        endwhile
+        let s:n = s:n + 1
+        if s:n > line("$")
+            return s:n
+        endif
+        let s:jyxstr = getline(s:n)
+    endwhile
 
-    b.append(["#ifndef " + gatename,
-                "#define " + gatename,
-                "\n"],n)
+    return s:n
+    unset s:jyxstr
+    unset s:n
+endfunction
 
-    externCflag = vim.eval("g:HeaderGatesAdd_extern_c")
-    if externCflag=='1':
-        b.append([ "#ifdef __cplusplus",
-                    "extern \"C\" {",
-                    "#endif"], n+3)
+function! s:GenerateGateStr()
+    let s:name = expand("%:t:r")
 
-        b.append("\n")
-        b.append("#ifdef __cplusplus")
-        b.append("}")
-        b.append("#endif")
-        b.append("\n")
+    " insert prefix
+    let s:gate = g:HeaderGatesAdd_prefix
 
-    b.append("#endif" + "  /*" + gatename +"*/")
+    let s:n = len(s:name)
+    let s:i = 0
+    while s:i < s:n
+        " process space and '.'
+        if s:name[s:i] == " " || s:name[s:i] == "\."
+            let s:gate = s:gate . "_"
+            let s:i += 1
+            continue
+        endif
 
-cplusHeaderGates()
-#generateGateName("aTest.h")
-EOF
+        if g:HeaderGatesAdd_gate_type == "0"  " default  aTestFile.h ---> A_TEST_FILE
+            if s:name[s:i] =~ '\u'
+                let s:gate = s:gate . "_" . s:name[s:i]
+            else
+                let s:gate = s:gate . toupper(s:name[s:i])
+            endif
+        elseif g:HeaderGatesAdd_gate_type == "1"    " aTestFile.h  ---->  ATESTFILE
+            let s:gate = s:gate . toupper(s:name[s:i])
+        else   " aTestFile.h  ----> aTestFile
+            let s:gate = s:gate . s:name[s:i]
+        endif
+
+        let s:i = s:i + 1
+    endwhile
+
+    " append suffix
+    let s:gate = s:gate . g:HeaderGatesAdd_suffix
+
+    return s:gate
+    unset s:name
+    unset s:n
+    unset s:i
+    unset s:gate
+endfunction
+
+"insert header gates
+function! s:InsertHeaderGates()
+    let s:title = expand("%:t")
+    " Test for empty filename.
+    if empty(s:title)
+        echoerr "Empty filename (save file and try again)."
+        return
+    endif
+    let s:gate = <SID>GenerateGateStr()
+    let s:n = <SID>getInsertLine()
+
+    " get append line
+    if s:n > line("$")
+        let s:n = line("$")
+    elseif s:n > line("w0")
+        let s:n -= 1
+    endif
+
+    call append(s:n, [ "",
+                \     "#ifndef " . s:gate,
+                \     "#define " . s:gate,
+                \     ""])
+    let s:n += 4
+    if g:HeaderGatesAdd_extern_c == "1"
+        call append(s:n, [ "#ifdef __cplusplus",
+                    \      "extern \"C\" {",
+                    \      "#endif",
+                    \      "" ])
+        let s:n = line("$")
+        call append(s:n, [ "",
+                    \      "#ifdef __cplusplus",
+                    \      "}",
+                    \      "#endif" ])
+    endif
+
+    let s:n = line("$")
+    call append(s:n, [ "", "#endif" . "  /*" . s:gate . "*/" ])
 endfunction
 
 "}}}
 
-command! -nargs=0 HeaderGatesAdd : call <SID>insertHeaderGates()
-autocmd BufNewFile *.{h,hpp} call <SID>insertHeaderGates()
+command! -nargs=0 HeaderGatesAdd : call <SID>InsertHeaderGates()
+autocmd BufNewFile *.{h,hpp} call <SID>InsertHeaderGates()

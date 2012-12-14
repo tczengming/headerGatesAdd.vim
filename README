@@ -1,5 +1,7 @@
-This is a mirror of http://www.vim.org/scripts/script.php?script_id=3407
-
+script type
+utility
+ 
+description
 C/C++ header files should be guarded against multiple inclusions using preprocessor directives, e.g.:
 let g:HeaderGatesAdd_suffix="_H"   is default  
 1.
@@ -77,4 +79,16 @@ let g:HeaderGatesAdd_gate_type=2
 aTestFile.h  --------->aTestFile
 
 may be you have other style,  u can send email to me.
+
+install details
+1.Using [Vundle.vim](Recommend):~ 
+    https://github.com/gmarik/vundle 
+    After installed vundle and git. Add this line to your vimrc   
+    Bundle `'tczengming/headerGatesAdd.vim'` 
+    Run `:BundleInstall` to install. 
+    And update them easily by `:BundleInstall!` 
+2. 
+   Copy the script file into to the plugin directory of Vimfiles, such as ~/.vim/plugin/
+
+version 1.4 do not require python support 
 the end please forgive my poor english
